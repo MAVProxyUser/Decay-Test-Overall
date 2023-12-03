@@ -1,0 +1,3 @@
+[submodule "pyoto"]
+	path = pyoto
+	url = https://github.com/Oto-Lawn-Care/pyoto
