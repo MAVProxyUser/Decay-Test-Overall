@@ -1,7 +1,5 @@
-import concurrent.futures
 import logging
 import sys
-import threading
 import time
 import tkinter as tk
 import tkinter.font as font
@@ -10,7 +8,6 @@ from enum import Enum, auto
 from tkinter import scrolledtext
 from tkinter.constants import RAISED, SUNKEN
 from typing import Dict, List
-from datetime import datetime
 import ctypes
 import csv
 import numpy as np
@@ -27,8 +24,6 @@ CONFIG_YAML_PATH = "config.yml"
 VALID_VID = 0x10C4
 VALID_PID = 0xEA60
 # Max number of workers
-WORKERS = 20
-# lock = threading.Lock()
 globalLoggingLevel = logging.INFO
 # Set up logging
 logging.basicConfig(level=globalLoggingLevel, format="%(message)s")
@@ -50,14 +45,6 @@ class bcolors:
     BOLD = "\033[1m"
     UNDERLINE = "\033[4m"
 
-def threaded(fn):
-    def run(*k, **kw):
-        t = threading.Thread(target=fn, args=k, kwargs=kw)
-        t.start()
-        return t
-
-    return run
-
 class EventType(Enum):
     UPDATE_ALL = auto()
     DISABLE_PACK = auto()
@@ -70,8 +57,6 @@ class SerialBoardCard(tk.Frame):
     BUSY_COLOR = "#e9c7ff"
     OK_COLOR = "#40ff40"
     ERROR_COLOR = "#ff145b"
-    TIMEINTERVAL = 60  # time to wait between samples
-    TOTALTIME = 45 * TIMEINTERVAL  # time to collect data over
 
     class PortStatus(Enum):
         IDLE = auto()
@@ -107,6 +92,7 @@ class SerialBoardCard(tk.Frame):
             self.scrolledTextWidget.configure(state="disabled")
             # Autoscroll to the bottom
             self.scrolledTextWidget.yview(tk.END)
+            self.scrolledTextWidget.update()
 
     def __init__(
         self,
@@ -253,10 +239,10 @@ class SerialBoardCard(tk.Frame):
         StartTime = time.time()
         t0 = StartTime
         t1 = StartTime + 1
-        while t0 - StartTime < self.TOTALTIME:
+        while t0 - StartTime < 600:
             if t0 > t1:
                 error = self.PressureCheck(data_collection_time = 3.0)
-                logtime = datetime.now().strftime("%Y-%m-%d, %H:%M:%S.%f")
+                logtime = time.asctime()
                 self.status = SerialBoardCard.PortStatus.WAITING
                 if error is not None:
                     self.logger.error(error)
@@ -265,14 +251,13 @@ class SerialBoardCard(tk.Frame):
                     return error
                 self.Pressures.append(self.PressureAve)
                 self.STDs.append(self.PressureSTD)
-                MACName = self.MACAddress.replace(":", "-")
-                with open(MACName + " readings.csv", "a", newline='') as csvfile:
+                with open(SerialBoardCard.MACAddress + " readings.csv", "a", newline='') as csvfile:
                     dataWriter = csv.writer(csvfile)
-                    row = [logtime, self.PressureAve, round(self.PressureSTD * 2.75, 2)]
+                    row = [logtime, self.PressureAve, self.PressureSTD]
                     dataWriter.writerow(row)
                     csvfile.close()
-                self.logger.info(f"{logtime}: {self.PressureAve}, {round(self.PressureSTD * 2.75, 2)}")
-                t1 = t0 + self.TIMEINTERVAL
+                self.logger.info(f"{logtime}: {int(self.PressureAve)}, {self.PressureSTD}")
+                t1 = t0 + 60
             else:
                 time.sleep(t1 - t0)
             t0 = time.time()
@@ -286,13 +271,14 @@ class SerialBoardCard(tk.Frame):
         self.labelPortName["bg"] = self.IDLE_COLOR
         self.labelStatus["text"] = "Idle 闲置中"
         self.labelStatus["bg"] = self.IDLE_COLOR
+        self.update()
 
     def _setStatusWaiting(self):
-        self.configure(background=self.IDLE_COLOR)
-        self._status = SerialBoardCard.PortStatus.WAITING
-        self.labelPortName["bg"] = self.IDLE_COLOR
+        self.configure(background=self.BUSY_COLOR)
+        self.labelPortName["bg"] = self.BUSY_COLOR
         self.labelStatus["text"] = "Waiting"
-        self.labelStatus["bg"] = self.IDLE_COLOR
+        self.labelStatus["bg"] = self.BUSY_COLOR
+        self.update()
 
     def _setStatusSuccess(self):
         self.configure(background=self.OK_COLOR)
@@ -300,6 +286,7 @@ class SerialBoardCard(tk.Frame):
         self.labelPortName["bg"] = self.OK_COLOR
         self.labelStatus["text"] = "DONE 完成"
         self.labelStatus["bg"] = self.OK_COLOR
+        self.update()
 
     def _setStatusFail(self):
         self.configure(background=self.ERROR_COLOR)
@@ -307,6 +294,7 @@ class SerialBoardCard(tk.Frame):
         self.labelPortName["bg"] = self.ERROR_COLOR
         self.labelStatus["text"] = "Test Error!"
         self.labelStatus["bg"] = self.ERROR_COLOR
+        self.update()
 
     def _setStatusFailPressure(self):
         self.configure(background=self.ERROR_COLOR)
@@ -314,21 +302,22 @@ class SerialBoardCard(tk.Frame):
         self.labelPortName["bg"] = self.ERROR_COLOR
         self.labelStatus["text"] = "Failed Pressure Sensor\n压力传感器故障"
         self.labelStatus["bg"] = self.ERROR_COLOR
+        self.update()
 
     def _setStatusConnecting(self):
         self._status = SerialBoardCard.PortStatus.CONNECTING
         self.labelStatus["text"] = "Connecting 连接"
+        self.update()
 
     def _setStatusCheckPressure(self):
-        self.configure(background=self.BUSY_COLOR)
         self._status = SerialBoardCard.PortStatus.CHECK_PRESSURE
-        self.labelPortName["bg"] = self.BUSY_COLOR
         self.labelStatus["text"] = "Pressure Check"
-        self.labelStatus["bg"] = self.BUSY_COLOR
+        self.update()
 
     def _setStatusConnected(self):
         self._status = SerialBoardCard.PortStatus.CONNECTED
         self.labelStatus["text"] = "Connected 连接成功"
+        self.update()
 
     def _setStatusConnectFlasher(self):
         self.configure(background=self.ERROR_COLOR)
@@ -336,6 +325,7 @@ class SerialBoardCard(tk.Frame):
         self.labelPortName["bg"] = self.ERROR_COLOR
         self.labelStatus["text"] = "CONNECT FLASHER\n连接USB通信测试板"
         self.labelStatus["bg"] = self.ERROR_COLOR
+        self.update()
 
     def getSerialPortFromUSBSerial(self):
         """Match port with serial card by matching the serial numbers
@@ -543,25 +533,32 @@ class Application(tk.Frame):
                 )
                 root.minsize(width=len(self.portCardList)*105, height=450)
 
-    @threaded
     def TestAll(self):
         """Test all connected COM Ports"""
         self.ButtonAll.disable()
-        resultList = list()
-        futureList: List[concurrent.futures.Future] = list()
+        # resultList = list()
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="testing") as executor:
-            for portGui in self.portCardList:
-                futureList.append(executor.submit(portGui.ButtonCallback))
-                concurrent.futures.wait(futureList, timeout = None, return_when = "ALL_COMPLETED")
-        resultList = [x.result() for x in futureList]
-        index = 0
-        portList = map(str, self.portCardList)
-        for port, result in zip(portList, resultList):
-            if result is None:
-                self.portCardList[index].status = SerialBoardCard.PortStatus.SUCCESS
-                zope.event.notify(EventType.UPDATE_ALL)
-            index += 1
+        Result = self.portCardList[0].ButtonCallback()
+
+        # futureList: List[concurrent.futures.Future] = list()
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="testing") as executor:
+        #     for portGui in self.portCardList:
+        #         futureList.append(executor.submit(portGui.ButtonCallback))
+        #         concurrent.futures.wait(futureList, timeout = None, return_when = "ALL_COMPLETED")
+        # resultList = [x.result() for x in futureList]
+        # index = 0
+        # portList = map(str, self.portCardList)
+        # for port, result in zip(portList, resultList):
+        #     if result is None:
+        #         self.portCardList[index].status = SerialBoardCard.PortStatus.SUCCESS
+        #         zope.event.notify(EventType.UPDATE_ALL)
+        #     index += 1
+        # with open("readings.csv", "a", newline='') as csvfile:
+        #     dataWriter = csv.writer(csvfile)
+        #     for count, x in enumerate(self.portCardList):
+        #         if self.portCardList[count].MACAddress is not None:
+        #             row = [self.portCardList[count].MACAddress, self.portCardList[count].adcReading, self.portCardList[count].PressureAve, self.portCardList[count].PressureSTD]
+        #             dataWriter.writerow(row)
         self.ButtonAll.enable()
 
     def getValidPorts(self, VID=None, PID=None):

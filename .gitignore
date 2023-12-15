@@ -1,6 +1,6 @@
 # config file
 config.yml
-readings.csv
+*.csv
 
 # firmware_downloader temp files
 firmware_downloader_extracted/
