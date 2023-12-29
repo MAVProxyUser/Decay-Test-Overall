@@ -34,6 +34,12 @@ globalLoggingLevel = logging.INFO
 logging.basicConfig(level=globalLoggingLevel, format="%(message)s")
 mainLogger = logging.getLogger(__name__)
 
+OUTPUTMIN = 0.1 * (2**24)
+ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
+
+def tokPa(ADC):
+    return (ADC - OUTPUTMIN) * ADCtokPa
+
 class ButtonState:
     DISABLED = "disabled"
     NORMAL = "normal"
@@ -160,8 +166,8 @@ class SerialBoardCard(tk.Frame):
         self.MACAddress = None
         self.config_object = config_object
         self.Pressure_Failed = False
-        self.PressureAve = 0
-        self.PressureSTD = 0
+        self.PressureAve: float = 0
+        self.PressureSTD: float = 0
         self.Pressures = []
         self.STDs = []
         self.bomNumber: str = None
@@ -250,10 +256,14 @@ class SerialBoardCard(tk.Frame):
             return error
 
         # Step 4 Pressure Check for x minutes
+        MACName = self.MACAddress.replace(":", "-")
+        self.Pressures.clear()
+        self.STDs.clear()
         StartTime = time.time()
         t0 = StartTime
         t1 = StartTime + 1
-        while t0 - StartTime < self.TOTALTIME:
+        Duration = 0
+        while Duration < self.TOTALTIME:
             if t0 > t1:
                 error = self.PressureCheck(data_collection_time = 3.0)
                 logtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -265,17 +275,21 @@ class SerialBoardCard(tk.Frame):
                     return error
                 self.Pressures.append(self.PressureAve)
                 self.STDs.append(self.PressureSTD)
-                MACName = self.MACAddress.replace(":", "-")
+                if Duration > 0:
+                    AverageRate = round((self.Pressures[0] - self.PressureAve) / (Duration / 60), 2)
+                    RateError = round((2.75 * (self.STDs[0] + self.PressueSTD)) / (Duration / 60), 3)
+
                 with open(MACName + " readings.csv", "a", newline='') as csvfile:
                     dataWriter = csv.writer(csvfile)
-                    row = [logtime, self.PressureAve, round(self.PressureSTD * 2.75, 2)]
+                    row = [logtime, round(self.PressureAve, 2), round(self.PressureSTD * 2.75, 3), AverageRate, RateError]
                     dataWriter.writerow(row)
                     csvfile.close()
-                self.logger.info(f"{logtime}: {self.PressureAve}, {round(self.PressureSTD * 2.75, 2)}")
+                self.logger.info(f"{logtime}: {round(self.PressureAve, 2)}±{round(self.PressureSTD * 2.75, 3)} kPa, {AverageRate}±{RateError} kPa/hr")
                 t1 = t0 + self.TIMEINTERVAL
             else:
                 time.sleep(t1 - t0)
             t0 = time.time()
+            Duration = t0 - StartTime
 
         self.logger.info("Test complete.")
         return None
@@ -368,8 +382,8 @@ class SerialBoardCard(tk.Frame):
             return "No pressure data was collected.\n未收集压力数值"
         for message in Sensor_Read_List:
             pressureReading.append(int(message.pressure_adc))
-        self.PressureAve = round(np.mean(pressureReading), 0)
-        self.PressureSTD = round(np.std(pressureReading), 1)
+        self.PressureAve = round(tokPa(np.mean(pressureReading)), 2)
+        self.PressureSTD = round(ADCtokPa * np.std(pressureReading), 3)
         return None
 
     def OtOConnect(self):
