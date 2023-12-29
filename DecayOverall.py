@@ -415,7 +415,6 @@ class SerialBoardCard(tk.Frame):
         else:
             return "Unknown pressure sensor detected\n检查到未知压力传感器"
 
-
 class AllButton(tk.Button):
     FONT_FAMILY = "Microsoft YaHei UI"
     FONT_SIZE = 22
@@ -542,6 +541,12 @@ class Application(tk.Frame):
                     )
                 )
                 root.minsize(width=len(self.portCardList)*105, height=450)
+        else:
+            tkinter.messagebox.showerror(
+                title = "Invalid File",
+                message=f"{self.config_object.yaml_file_path} is not in a valid format.",
+            )
+            on_closing()
 
     @threaded
     def TestAll(self):
