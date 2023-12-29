@@ -70,8 +70,8 @@ class SerialBoardCard(tk.Frame):
     BUSY_COLOR = "#e9c7ff"
     OK_COLOR = "#40ff40"
     ERROR_COLOR = "#ff145b"
-    TIMEINTERVAL = 60  # time to wait between samples
-    TOTALTIME = 45 * TIMEINTERVAL  # time to collect data over
+    TIMEINTERVAL = 60  # time in seconds to wait between samples
+    TOTALTIME = 360 * TIMEINTERVAL  # time in seconds to collect data over
 
     class PortStatus(Enum):
         IDLE = auto()
@@ -256,7 +256,7 @@ class SerialBoardCard(tk.Frame):
         while t0 - StartTime < self.TOTALTIME:
             if t0 > t1:
                 error = self.PressureCheck(data_collection_time = 3.0)
-                logtime = datetime.now().strftime("%Y-%m-%d, %H:%M:%S.%f")
+                logtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                 self.status = SerialBoardCard.PortStatus.WAITING
                 if error is not None:
                     self.logger.error(error)
