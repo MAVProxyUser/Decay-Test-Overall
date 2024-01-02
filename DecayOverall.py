@@ -36,6 +36,8 @@ mainLogger = logging.getLogger(__name__)
 
 OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
+TIMEINTERVAL = 120  # time in seconds to wait between samples
+TOTALTIME = 15 * TIMEINTERVAL  # time in seconds to collect data over
 
 def tokPa(ADC):
     return (ADC - OUTPUTMIN) * ADCtokPa
@@ -61,7 +63,6 @@ def threaded(fn):
         t = threading.Thread(target=fn, args=k, kwargs=kw)
         t.start()
         return t
-
     return run
 
 class EventType(Enum):
@@ -76,8 +77,6 @@ class SerialBoardCard(tk.Frame):
     BUSY_COLOR = "#e9c7ff"
     OK_COLOR = "#40ff40"
     ERROR_COLOR = "#ff145b"
-    TIMEINTERVAL = 60  # time in seconds to wait between samples
-    TOTALTIME = 360 * TIMEINTERVAL  # time in seconds to collect data over
 
     class PortStatus(Enum):
         IDLE = auto()
@@ -229,7 +228,7 @@ class SerialBoardCard(tk.Frame):
 
         self.Pressure_Failed = False
 
-        self.logger.info("Started Testing...")
+        self.logger.info(f"Started Testing for {TOTALTIME/60} minutes, every {TIMEINTERVAL} seconds...")
 
         # STEP 1 Find COM port
         error = self.getSerialPortFromUSBSerial()
@@ -263,11 +262,13 @@ class SerialBoardCard(tk.Frame):
         t0 = StartTime
         t1 = StartTime + 1
         Duration = 0
-        while Duration < self.TOTALTIME:
+        self.logger.info(self.MACAddress, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+        while Duration < TOTALTIME:
             if t0 > t1:
                 error = self.PressureCheck(data_collection_time = 3.0)
                 logtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
                 self.status = SerialBoardCard.PortStatus.WAITING
+                zope.event.notify(EventType.UPDATE_ALL)
                 if error is not None:
                     self.logger.error(error)
                     self.status = SerialBoardCard.PortStatus.FAIL_PRESSURE
@@ -276,21 +277,38 @@ class SerialBoardCard(tk.Frame):
                 self.Pressures.append(self.PressureAve)
                 self.STDs.append(self.PressureSTD)
                 if Duration > 0:
-                    AverageRate = round((self.Pressures[0] - self.PressureAve) / (Duration / 60), 2)
-                    RateError = round((2.75 * (self.STDs[0] + self.PressueSTD)) / (Duration / 60), 3)
-
+                    AverageRate = round((self.Pressures[0] - self.PressureAve) / (Duration / 60), 3)
+                    RateError = round((2.75 * (self.STDs[0] + self.PressureSTD)) / (Duration / 60), 4)
                 with open(MACName + " readings.csv", "a", newline='') as csvfile:
                     dataWriter = csv.writer(csvfile)
-                    row = [logtime, round(self.PressureAve, 2), round(self.PressureSTD * 2.75, 3), AverageRate, RateError]
+                    row = [logtime, round(self.PressureAve, 4), round(self.PressureSTD * 2.75, 5), AverageRate, RateError]
                     dataWriter.writerow(row)
                     csvfile.close()
-                self.logger.info(f"{logtime}: {round(self.PressureAve, 2)}±{round(self.PressureSTD * 2.75, 3)} kPa, {AverageRate}±{RateError} kPa/hr")
-                t1 = t0 + self.TIMEINTERVAL
+                self.logger.info(f"{round(Duration/60, 1)} minutes: {round(self.PressureAve, 2)}±{round(self.PressureSTD * 2.75, 3)} kPa, {AverageRate}±{RateError} kPa/hr")
+                t1 = t0 + TIMEINTERVAL
             else:
                 time.sleep(t1 - t0)
             t0 = time.time()
             Duration = t0 - StartTime
-
+        error = self.PressureCheck(data_collection_time = 3.0)
+        logtime = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        self.status = SerialBoardCard.PortStatus.WAITING
+        zope.event.notify(EventType.UPDATE_ALL)
+        if error is not None:
+            self.logger.error(error)
+            self.status = SerialBoardCard.PortStatus.FAIL_PRESSURE
+            zope.event.notify(EventType.UPDATE_ALL)
+            return error
+        self.Pressures.append(self.PressureAve)
+        self.STDs.append(self.PressureSTD)
+        AverageRate = round((self.Pressures[0] - self.PressureAve) / (TOTALTIME / 60), 3)
+        RateError = round((2.75 * (self.STDs[0] + self.PressureSTD)) / (TOTALTIME / 60), 4)
+        with open(MACName + " readings.csv", "a", newline='') as csvfile:
+            dataWriter = csv.writer(csvfile)
+            row = [logtime, round(self.PressureAve, 4), round(self.PressureSTD * 2.75, 5), AverageRate, RateError]
+            dataWriter.writerow(row)
+            csvfile.close()
+        self.logger.info(f"{round(TOTALTIME/60, 1)} minutes: {round(self.PressureAve, 2)}±{round(self.PressureSTD * 2.75, 3)} kPa, {AverageRate}±{RateError} kPa/hr")
         self.logger.info("Test complete.")
         return None
 
@@ -371,6 +389,7 @@ class SerialBoardCard(tk.Frame):
         pressureReading: list = []
         self.PressureAve = 0
         self.PressureSTD = 0
+        self.pyoto_instance.set_valve_duty(direction = 1, duty_cycle = 100)
         self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_100Hz)
         time.sleep(0.1)
         self.pyoto_instance.clear_incoming_packet_log()
@@ -378,12 +397,13 @@ class SerialBoardCard(tk.Frame):
         while time.time() - main_loop_start_time <= data_collection_time:
             Sensor_Read_List.extend(self.pyoto_instance.read_all_sensor_packets(limit=None, consume=True))
         self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_OFF)
+        self.pyoto_instance.set_valve_duty(direction = 0, duty_cycle = 0)
         if not Sensor_Read_List:
             return "No pressure data was collected.\n未收集压力数值"
         for message in Sensor_Read_List:
             pressureReading.append(int(message.pressure_adc))
-        self.PressureAve = round(tokPa(np.mean(pressureReading)), 2)
-        self.PressureSTD = round(ADCtokPa * np.std(pressureReading), 3)
+        self.PressureAve = round(tokPa(np.mean(pressureReading)), 4)
+        self.PressureSTD = round(ADCtokPa * np.std(pressureReading), 5)
         return None
 
     def OtOConnect(self):
@@ -410,17 +430,11 @@ class SerialBoardCard(tk.Frame):
         # see PressureSensorVersionEnum in otoMessageDefs for breakdown
         if returned_pressure_sensor_version == otoMessageDefs.PressureSensorVersionEnum.PRESSURE_SENSOR_UNINITIALIZED.value:
             return "Uninitialized pressure sensor\n压力传感器未能启动"
-        elif returned_pressure_sensor_version == otoMessageDefs.PressureSensorVersionEnum.TPBD_15_PSI_GAUGE.value:
+        elif returned_pressure_sensor_version == otoMessageDefs.PressureSensorVersionEnum.TPBD_15_PSI_GAUGE.value or returned_pressure_sensor_version == otoMessageDefs.PressureSensorVersionEnum.MPRL_15_PSI_GAUGE.value:
             return "This is an old design board and cannot be tested on this station."
-        elif returned_pressure_sensor_version == otoMessageDefs.PressureSensorVersionEnum.MPRL_15_PSI_GAUGE.value:
-            self.logger.info("15 psi pressure sensor detected\n检测到0.1MPa压力传感器")
-            self.max_acceptable_STD: float = 387.8  # Jan 2023 ±4σ
-            self.min_acceptable_STD: float = 96.5  # Jan 2023 ±4σ
-            self.max_acceptable_ADC: float = 1786755  # Jan 2023 ±4σ
-            self.min_acceptable_ADC: float = 1611555  # Jan 2023 ±4σ
-            return None
         elif returned_pressure_sensor_version == otoMessageDefs.PressureSensorVersionEnum.MPRL_30_PSI_GAUGE.value:
-            self.logger.info("30 psi pressure sensor detected\n检测到0.21MPa压力传感器")
+            # self.logger.info("30 psi pressure sensor detected\n检测到0.21MPa压力传感器")
+            self.GaugeRange = 206.8427  # 206.8427 kPa = 30 psi
             self.max_acceptable_STD: float = 206.9  # Jan 2023 ±4σ
             self.min_acceptable_STD: float = 66.5  # Jan 2023 ±4σ
             self.max_acceptable_ADC: float = 1764145  # Jan 2023 ±4σ 1764145
@@ -443,7 +457,7 @@ class AllButton(tk.Button):
             self,
             master,
             font=font.Font(family=self.FONT_FAMILY, size=self.FONT_SIZE, weight=self.FONT_WEIGHT),
-            text="Decay Test All",
+            text = "Start Decay Test",
             command=command,
         )
         self.enable()
@@ -591,14 +605,6 @@ class Application(tk.Frame):
             if (VID is None or port.vid == VID) and (PID is None or port.pid == PID):
                 validPorts.append(port.name)
         return validPorts
-
-    def toggleFullScreen(self, event):
-        self.fullScreenState = not self.fullScreenState
-        self.winfo_toplevel().attributes("-fullscreen", self.fullScreenState)
-
-    def quitFullScreen(self, event):
-        self.fullScreenState = False
-        self.winfo_toplevel().attributes("-fullscreen", self.fullScreenState)
 
 def on_closing():
     sys.exit()

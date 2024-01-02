@@ -12,6 +12,7 @@ from typing import List
 import serial
 import serial.tools.list_ports
 import yaml
+import ctypes
 
 import configClass
 
@@ -127,14 +128,14 @@ class configureCOMPort(tk.Frame):
             self, selectmode="browse", columns=("index", "serial", "full_serial")
         )
         self.FlasherSerialTreeView.column(
-            "index", width=40, anchor=tkinter.constants.CENTER
+            "index", width=80, anchor=tkinter.constants.CENTER
         )
         self.FlasherSerialTreeView.heading("index", text="Index")
         self.FlasherSerialTreeView.column(
-            "serial", width=80, anchor=tkinter.constants.CENTER
+            "serial", width=160, anchor=tkinter.constants.CENTER
         )
         self.FlasherSerialTreeView.heading("serial", text="Serial")
-        self.FlasherSerialTreeView.column("full_serial", width=200)
+        self.FlasherSerialTreeView.column("full_serial", width=400)
         self.FlasherSerialTreeView.heading("full_serial", text="Full Serial")
         self.FlasherSerialTreeView["show"] = "headings"
 
@@ -385,25 +386,26 @@ def on_closing():
 
 if __name__ == "__main__":
 
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
     configurePopUp = tk.Tk()
 
     # ====== TKINTER PATCH from https://bugs.python.org/issue36468 ======
     s = ttk.Style()
     # from os import name as OS_Name
-    if configurePopUp.getvar("tk_patchLevel") == "8.6.9":  # and OS_Name=='nt':
+    # if configurePopUp.getvar("tk_patchLevel") == "8.6.9":  # and OS_Name=='nt':
 
-        def fixed_map(option):
-            return [
-                elm
-                for elm in s.map("Treeview", query_opt=option)
-                if elm[:2] != ("!disabled", "!selected")
-            ]
+    #     def fixed_map(option):
+    #         return [
+    #             elm
+    #             for elm in s.map("Treeview", query_opt=option)
+    #             if elm[:2] != ("!disabled", "!selected")
+    #         ]
 
-        s.map(
-            "Treeview",
-            foreground=fixed_map("foreground"),
-            background=fixed_map("background"),
-        )
+    #     s.map(
+    #         "Treeview",
+    #         foreground=fixed_map("foreground"),
+    #         background=fixed_map("background"),
+    #     )
 
     # ====== TKINTER PATCH END ======
 
@@ -412,7 +414,7 @@ if __name__ == "__main__":
     configurePopUp.protocol("WM_DELETE_WINDOW", on_closing)
     configurePopUp.grid_rowconfigure(0, weight=1)
     configurePopUp.grid_columnconfigure(0, weight=1)
-    configurePopUp.minsize(width=460, height=300)
+    configurePopUp.minsize(width=640, height=480)
     popUP = configureCOMPort(master=configurePopUp)
 
     configurePopUp.mainloop()
