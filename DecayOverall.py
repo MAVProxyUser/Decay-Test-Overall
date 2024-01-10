@@ -262,7 +262,8 @@ class SerialBoardCard(tk.Frame):
         t0 = StartTime
         t1 = StartTime + 1
         Duration = 0
-        self.logger.info(self.MACAddress, datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+        StartDate = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
+        self.logger.info(f"{self.MACAddress}, {StartDate}")
         while Duration < TOTALTIME:
             if t0 > t1:
                 error = self.PressureCheck(data_collection_time = 3.0)
@@ -390,6 +391,7 @@ class SerialBoardCard(tk.Frame):
         self.PressureAve = 0
         self.PressureSTD = 0
         self.pyoto_instance.set_valve_duty(direction = 1, duty_cycle = 100)
+        self.pyoto_instance.set_nozzle_duty(direction = 1, duty_cycle = 100)
         self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_100Hz)
         time.sleep(0.1)
         self.pyoto_instance.clear_incoming_packet_log()
@@ -398,6 +400,7 @@ class SerialBoardCard(tk.Frame):
             Sensor_Read_List.extend(self.pyoto_instance.read_all_sensor_packets(limit=None, consume=True))
         self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_OFF)
         self.pyoto_instance.set_valve_duty(direction = 0, duty_cycle = 0)
+        self.pyoto_instance.set_nozzle_duty(direction = 0, duty_cycle = 0)
         if not Sensor_Read_List:
             return "No pressure data was collected.\n未收集压力数值"
         for message in Sensor_Read_List:
