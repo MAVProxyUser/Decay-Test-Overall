@@ -20,6 +20,7 @@ import zope.event
 import configClass
 import pyoto.otoProtocol.otoCommands as pyoto
 import pyoto.otoProtocol.otoMessageDefs as otoMessageDefs
+import random
 
 CONFIG_YAML_PATH = "config.yml"
 # -------- Other Settings --------
@@ -36,8 +37,8 @@ mainLogger = logging.getLogger(__name__)
 
 OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
-TIMEINTERVAL = 120  # time in seconds to wait between samples
-TOTALTIME = 15 * TIMEINTERVAL  # time in seconds to collect data over
+TIMEINTERVAL = 60  # time in seconds to wait between samples
+TOTALTIME = 60 * TIMEINTERVAL  # time in seconds to collect data over
 
 def tokPa(ADC):
     return (ADC - OUTPUTMIN) * ADCtokPa
@@ -390,8 +391,18 @@ class SerialBoardCard(tk.Frame):
         pressureReading: list = []
         self.PressureAve = 0
         self.PressureSTD = 0
-        self.pyoto_instance.set_valve_duty(direction = 1, duty_cycle = 100)
-        self.pyoto_instance.set_nozzle_duty(direction = 1, duty_cycle = 100)
+        ValveSpeed = random.uniform(50,100)
+        if random.random() > 0.5:
+            ValveDirection = 1
+        else:
+            ValveDirection = -1
+        NozzleSpeed = random.uniform(20, 100)
+        if random.random() > 0.5:
+            NozzleDirection = 1
+        else:
+            NozzleDirection = -1
+        self.pyoto_instance.set_valve_duty(direction = ValveDirection, duty_cycle = ValveSpeed)
+        self.pyoto_instance.set_nozzle_duty(direction = NozzleDirection, duty_cycle = NozzleSpeed)
         self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_100Hz)
         time.sleep(0.1)
         self.pyoto_instance.clear_incoming_packet_log()
