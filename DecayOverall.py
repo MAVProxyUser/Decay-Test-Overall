@@ -38,7 +38,7 @@ mainLogger = logging.getLogger(__name__)
 OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
 TIMEINTERVAL = 60  # time in seconds to wait between samples
-TOTALTIME = 60 * TIMEINTERVAL  # time in seconds to collect data over
+TOTALTIME = 3 * 60 * TIMEINTERVAL  # time in seconds to collect data over
 
 def tokPa(ADC):
     return (ADC - OUTPUTMIN) * ADCtokPa
@@ -279,8 +279,8 @@ class SerialBoardCard(tk.Frame):
                 self.Pressures.append(self.PressureAve)
                 self.STDs.append(self.PressureSTD)
                 if Duration > 0:
-                    AverageRate = round((self.Pressures[0] - self.PressureAve) / (Duration / 60), 3)
-                    RateError = round((2.75 * (self.STDs[0] + self.PressureSTD)) / (Duration / 60), 4)
+                    AverageRate = round((self.Pressures[0] - self.PressureAve) / (Duration / 3600), 3)
+                    RateError = round((2.75 * (self.STDs[0] + self.PressureSTD)) / (Duration / 3600), 4)
                 with open(MACName + " readings.csv", "a", newline='') as csvfile:
                     dataWriter = csv.writer(csvfile)
                     row = [logtime, round(self.PressureAve, 4), round(self.PressureSTD * 2.75, 5), AverageRate, RateError]
