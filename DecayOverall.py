@@ -38,7 +38,7 @@ mainLogger = logging.getLogger(__name__)
 OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
 TIMEINTERVAL = 60  # time in seconds to wait between samples
-TOTALTIME = 3 * 60 * TIMEINTERVAL  # time in seconds to collect data over
+TOTALTIME = 10 * 60 * TIMEINTERVAL  # time in seconds to collect data over
 
 def tokPa(ADC):
     return (ADC - OUTPUTMIN) * ADCtokPa
@@ -600,7 +600,7 @@ class Application(tk.Frame):
         with concurrent.futures.ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="testing") as executor:
             for portGui in self.portCardList:
                 futureList.append(executor.submit(portGui.ButtonCallback))
-                concurrent.futures.wait(futureList, timeout = None, return_when = "ALL_COMPLETED")
+                concurrent.futures.wait(futureList, timeout = 1, return_when = "ALL_COMPLETED")
         resultList = [x.result() for x in futureList]
         index = 0
         portList = map(str, self.portCardList)
