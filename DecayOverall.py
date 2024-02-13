@@ -38,7 +38,7 @@ mainLogger = logging.getLogger(__name__)
 OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
 TIMEINTERVAL = 60  # time in seconds to wait between samples
-TOTALTIME = 10 * 60 * TIMEINTERVAL  # time in seconds to collect data over
+TOTALTIME = 8 * 60 * TIMEINTERVAL  # time in seconds to collect data over
 
 def tokPa(ADC):
     return (ADC - OUTPUTMIN) * ADCtokPa
@@ -410,6 +410,7 @@ class SerialBoardCard(tk.Frame):
         while time.time() - main_loop_start_time <= data_collection_time:
             Sensor_Read_List.extend(self.pyoto_instance.read_all_sensor_packets(limit=None, consume=True))
         self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_OFF)
+        self.pyoto_instance.clear_incoming_packet_log()
         self.pyoto_instance.set_valve_duty(direction = 0, duty_cycle = 0)
         self.pyoto_instance.set_nozzle_duty(direction = 0, duty_cycle = 0)
         if not Sensor_Read_List:
@@ -428,6 +429,7 @@ class SerialBoardCard(tk.Frame):
             self.pyoto_instance.start_connection(port=self.port, reset_on_connect=True)
             self.status = SerialBoardCard.PortStatus.CONNECTED
             self.MACAddress = self.pyoto_instance.get_mac_address().string
+            self.logger.info(f"Battery: {round(float(self.pyoto_instance.get_voltages().battery_voltage_v), 2)} V")
             self.pyoto_instance.use_moving_average_filter(True)
         except Exception as error:
             self.logger.exception("Failed to connect to board\n连接线路板失败")
