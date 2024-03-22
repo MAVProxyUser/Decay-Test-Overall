@@ -39,6 +39,9 @@ OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
 TIMEINTERVAL = 60  # time in seconds to wait between samples
 TOTALTIME = 12 * 60 * TIMEINTERVAL  # time in seconds to collect data over
+DYNAMIC_FLAG = True #Setting to false will block all default movement commands
+UART_FLAG = True #Setting to false will use BLE to connect to below target unit instead
+TARGET_UNIT = "oto1234567" #Only used in BLE mode (when UART_FLAG = False)
 
 def tokPa(ADC):
     return (ADC - OUTPUTMIN) * ADCtokPa
@@ -231,7 +234,7 @@ class SerialBoardCard(tk.Frame):
 
         self.logger.info(f"Started Testing for {TOTALTIME/60} minutes, every {TIMEINTERVAL} seconds...")
 
-        # STEP 1 Find COM port
+        # STEP 1 Find COM port if in UART Mode:
         error = self.getSerialPortFromUSBSerial()
         if error is not None:
             self.logger.error(error)
@@ -377,12 +380,13 @@ class SerialBoardCard(tk.Frame):
         Saves as string to self.port"""
 
         self.port = None
-        allPorts = serial.tools.list_ports.comports()
-        for port in allPorts:
-            if port.serial_number == self.flasherSerial and port.vid == VALID_VID and port.pid == VALID_PID:
-                self.port = port.name
-        if self.port is None:
-            return f"COM port with serial {self.flasherSerial}, vid {VALID_VID}, pid {VALID_PID} not found. Ensure flashing boards are connected to the computer\n确认USB通信测试板与计算机连接"
+        if UART_FLAG:
+            allPorts = serial.tools.list_ports.comports()
+            for port in allPorts:
+                if port.serial_number == self.flasherSerial and port.vid == VALID_VID and port.pid == VALID_PID:
+                    self.port = port.name
+            if self.port is None:
+                return f"COM port with serial {self.flasherSerial}, vid {VALID_VID}, pid {VALID_PID} not found. Ensure flashing boards are connected to the computer\n确认USB通信测试板与计算机连接"
         return None
 
     def PressureCheck(self, data_collection_time: float):
@@ -391,20 +395,24 @@ class SerialBoardCard(tk.Frame):
         pressureReading: list = []
         self.PressureAve = 0
         self.PressureSTD = 0
-        ValveSpeed = random.uniform(50,100)
-        if random.random() > 0.5:
-            ValveDirection = 1
+        if DYNAMIC_FLAG:
+            ValveSpeed = random.uniform(50,100)
+            if random.random() > 0.5:
+                ValveDirection = 1
+            else:
+                ValveDirection = -1
+            NozzleSpeed = random.uniform(20, 100)
+            if random.random() > 0.5:
+                NozzleDirection = 1
+            else:
+                NozzleDirection = -1
+            self.pyoto_instance.set_valve_duty(direction = ValveDirection, duty_cycle = ValveSpeed)
+            self.pyoto_instance.set_nozzle_duty(direction = NozzleDirection, duty_cycle = NozzleSpeed)
+            self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_100Hz)
+            time.sleep(0.1)
         else:
-            ValveDirection = -1
-        NozzleSpeed = random.uniform(20, 100)
-        if random.random() > 0.5:
-            NozzleDirection = 1
-        else:
-            NozzleDirection = -1
-        self.pyoto_instance.set_valve_duty(direction = ValveDirection, duty_cycle = ValveSpeed)
-        self.pyoto_instance.set_nozzle_duty(direction = NozzleDirection, duty_cycle = NozzleSpeed)
-        self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_100Hz)
-        time.sleep(0.1)
+            self.pyoto_instance.set_sensor_subscribe(subscribe_frequency=pyoto.SensorSubscribeFrequencyEnum.SENSOR_SUBSCRIBE_FREQUENCY_100Hz)
+            time.sleep(0.1)
         self.pyoto_instance.clear_incoming_packet_log()
         main_loop_start_time = time.time()
         while time.time() - main_loop_start_time <= data_collection_time:
@@ -422,18 +430,38 @@ class SerialBoardCard(tk.Frame):
         return None
 
     def OtOConnect(self):
-        try:
-            self.pyoto_instance = pyoto.OtoInterface(connection_type=pyoto.ConnectionType.UART, logger=None)
-            # self.pyoto_instance.logger.setLevel(logging.INFO)
-            self.logger.info("Waiting for board to reboot...\n等待线路板重启")
-            self.pyoto_instance.start_connection(port=self.port, reset_on_connect=True)
-            self.status = SerialBoardCard.PortStatus.CONNECTED
-            self.MACAddress = self.pyoto_instance.get_mac_address().string
-            self.logger.info(f"Battery: {round(float(self.pyoto_instance.get_voltages().battery_voltage_v), 2)} V")
-            self.pyoto_instance.use_moving_average_filter(True)
-        except Exception as error:
-            self.logger.exception("Failed to connect to board\n连接线路板失败")
-            return f"Failed to connect to board on port {self.port}:\n连接线路板失败\n{repr(error)}"
+        if UART_FLAG:
+            try:
+                self.pyoto_instance = pyoto.OtoInterface(connection_type=pyoto.ConnectionType.UART, logger=None)
+                # self.pyoto_instance.logger.setLevel(logging.INFO)
+                self.logger.info("Waiting for board to reboot...\n等待线路板重启")
+                self.pyoto_instance.start_connection(port=self.port, reset_on_connect=True)
+                self.status = SerialBoardCard.PortStatus.CONNECTED
+                self.MACAddress = self.pyoto_instance.get_mac_address().string
+                self.logger.info(f"Battery: {round(float(self.pyoto_instance.get_voltages().battery_voltage_v), 2)} V")
+                self.pyoto_instance.use_moving_average_filter(True)
+            except Exception as error:
+                self.logger.exception("Failed to connect to board\n连接线路板失败")
+                return f"Failed to connect to board on port {self.port}:\n连接线路板失败\n{repr(error)}"
+        else:
+            try:
+                self.pyoto_instance = pyoto.OtoInterface(connection_type=pyoto.ConnectionType.BLE, logger=None)
+                # self.pyoto_instance.logger.setLevel(logging.INFO)
+                self.logger.info("Waiting for board to reboot...\n等待线路板重启")
+                self.pyoto_instance.start_connection(device_id=TARGET_UNIT, reset_on_connect=True)
+                self.status = SerialBoardCard.PortStatus.CONNECTED
+                self.MACAddress = self.pyoto_instance.get_mac_address().string
+                self.logger.info(f"Battery: {round(float(self.pyoto_instance.get_voltages().battery_voltage_v), 2)} V")
+                self.pyoto_instance.use_moving_average_filter(True)
+            except pyoto.otoBle.OtoNotFoundError as e:
+                print(f"\033[31mOtO {TARGET_UNIT} BLE not running! Try flicking switch and ensure you have the right unit number\033[0m")
+                return
+            except Exception as error:
+                self.logger.exception("Unhandled error! Failed to connect to board\n连接线路板失败")
+                return f"Failed to connect to board on port {self.port}:\n连接线路板失败\n{repr(error)}"
+            
+
+
 
     def getPressureSensorVersion(self):
         # assumes pyoto connection is open
