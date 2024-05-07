@@ -21,6 +21,7 @@ import configClass
 import pyoto.otoProtocol.otoCommands as pyoto
 import pyoto.otoProtocol.otoMessageDefs as otoMessageDefs
 import random
+import pathlib
 
 CONFIG_YAML_PATH = "config.yml"
 # -------- Other Settings --------
@@ -38,7 +39,7 @@ mainLogger = logging.getLogger(__name__)
 OUTPUTMIN = 0.1 * (2**24)
 ADCtokPa = 206.8427 / (0.8 * (2**24)) # 206.8427 kPa = 30 psi
 TIMEINTERVAL = 60  # time in seconds to wait between samples
-TOTALTIME = 12 * 60 * TIMEINTERVAL  # time in seconds to collect data over
+TOTALTIME = 6 * 60 * TIMEINTERVAL  # time in seconds to collect data over
 DYNAMIC_FLAG = True #Setting to false will block all default movement commands
 UART_FLAG = True #Setting to false will use BLE to connect to below target unit instead
 TARGET_UNIT = "oto1234567" #Only used in BLE mode (when UART_FLAG = False)
@@ -268,6 +269,11 @@ class SerialBoardCard(tk.Frame):
         Duration = 0
         StartDate = str(datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
         self.logger.info(f"{self.MACAddress}, {StartDate}")
+        FileName = MACName + " readings.csv"
+        if not pathlib.Path(FileName).exists():
+            Header = True
+        else:
+            Header = False
         while Duration < TOTALTIME:
             if t0 > t1:
                 error = self.PressureCheck(data_collection_time = 3.0)
@@ -286,6 +292,10 @@ class SerialBoardCard(tk.Frame):
                     RateError = round((2.75 * (self.STDs[0] + self.PressureSTD)) / (Duration / 3600), 4)
                 with open(MACName + " readings.csv", "a", newline='') as csvfile:
                     dataWriter = csv.writer(csvfile)
+                    if Header:
+                        row = ["Time Stamp", "Ave Pressure (kPa)", "Pressure STD (kPa)", "Average Rate (kPa/hr)", "Rate Error (±kPa/hr)"]
+                        dataWriter.writerow(row)
+                        Header = False
                     row = [logtime, round(self.PressureAve, 4), round(self.PressureSTD * 2.75, 5), AverageRate, RateError]
                     dataWriter.writerow(row)
                     csvfile.close()
@@ -308,7 +318,7 @@ class SerialBoardCard(tk.Frame):
         self.STDs.append(self.PressureSTD)
         AverageRate = round((self.Pressures[0] - self.PressureAve) / (TOTALTIME / 3600), 3)
         RateError = round((2.75 * (self.STDs[0] + self.PressureSTD)) / (TOTALTIME / 3600), 4)
-        with open(MACName + " readings.csv", "a", newline='') as csvfile:
+        with open(FileName, "a", newline='') as csvfile:
             dataWriter = csv.writer(csvfile)
             row = [logtime, round(self.PressureAve, 4), round(self.PressureSTD * 2.75, 5), AverageRate, RateError]
             dataWriter.writerow(row)
